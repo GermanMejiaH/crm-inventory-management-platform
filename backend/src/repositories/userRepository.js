@@ -10,9 +10,3 @@ export function updateUserPasswordByEmail(email, passwordHash) {
   db.prepare("UPDATE users SET passwordHash = ? WHERE email = ?").run(String(passwordHash), String(email))
   return true
 }
-
-export function updateLegacyUserPassword(email, oldPasswordHash, newBcryptHash) {
-  const stmt = db.prepare("UPDATE users SET passwordHash = ? WHERE email = ? AND passwordHash = ?")
-  const info = stmt.run(String(newBcryptHash), String(email), String(oldPasswordHash))
-  return info.changes > 0
-}

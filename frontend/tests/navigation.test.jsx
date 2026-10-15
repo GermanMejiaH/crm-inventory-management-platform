@@ -26,10 +26,6 @@ vi.mock("../src/api/client", () => ({
 }))
 
 describe("Navegación, Layout y Accesibilidad del Shell", () => {
-  beforeEach(() => {
-    localStorage.clear()
-  })
-
   it("renderiza el enlace de salto de accesibilidad (skip to content)", () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
@@ -92,7 +88,6 @@ describe("Navegación, Layout y Accesibilidad del Shell", () => {
     expect(logoutButtons.length).toBeGreaterThan(0)
     fireEvent.click(logoutButtons[0])
 
-    expect(localStorage.getItem("token")).toBeNull()
     expect(await screen.findByRole("button", { name: /Iniciar Sesión/i })).toBeTruthy()
   })
 })

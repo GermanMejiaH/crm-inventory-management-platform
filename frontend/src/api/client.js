@@ -99,6 +99,19 @@ export function generateProforma(token, id) {
 export function getProformas(token) {
   return request("/proformas", { token })
 }
+export async function downloadProformaPDF(token, proformaId) {
+  const url = `${BASE_URL}/proformas/${proformaId}/download`
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      try {
+        window.dispatchEvent(new CustomEvent("auth:unauthorized"))
+      } catch {}
+    }
+    throw new Error("Error al descargar la proforma")
+  }
+  return res.blob()
+}
 export const API_BASE_URL = BASE_URL
 export function getOptions(token) {
   return request("/config/options", { token })

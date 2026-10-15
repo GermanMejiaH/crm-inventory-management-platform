@@ -257,8 +257,32 @@ test("Pruebas de integración API Express con base temporal aislada", async (t) 
     })
     assert.equal(profRes.status, 200)
     const prof = await profRes.json()
-    assert.ok(prof.url.includes("/static/proformas/"))
+    assert.ok(prof.url.includes("/proformas/"))
     assert.ok(typeof prof.proformaId === "number")
+
+    // Verificaciones de descarga protegida de proformas:
+    // 1. Acceso sin token -> 401
+    const noTokenRes = await fetch(`${baseUrl}/proformas/${prof.proformaId}/download`)
+    assert.equal(noTokenRes.status, 401)
+
+    // 2. Acceso con token inválido -> 401
+    const invalidTokenRes = await fetch(`${baseUrl}/proformas/${prof.proformaId}/download`, {
+      headers: { Authorization: "Bearer invalid_token_12345" }
+    })
+    assert.equal(invalidTokenRes.status, 401)
+
+    // 3. Descarga autenticada exitosa -> 200
+    const authDownloadRes = await fetch(`${baseUrl}/proformas/${prof.proformaId}/download`, {
+      headers: { Authorization: `Bearer ${authToken}` }
+    })
+    assert.equal(authDownloadRes.status, 200)
+    assert.equal(authDownloadRes.headers.get("content-type"), "application/pdf")
+    const pdfBuf = await authDownloadRes.arrayBuffer()
+    assert.ok(pdfBuf.byteLength > 0)
+
+    // 4. Confirmación de que la ruta estática pública está eliminada -> 404
+    const staticRes = await fetch(`${baseUrl}/static/proformas/proforma-demo.pdf`)
+    assert.equal(staticRes.status, 404)
   })
 
   await t.test("Validación de entradas con Zod en clientes, productos y pedidos", async () => {
@@ -322,7 +346,7 @@ test("Pruebas de integración API Express con base temporal aislada", async (t) 
     })
     assert.equal(profRes.status, 200)
     const prof = await profRes.json()
-    assert.ok(prof.url.includes("/static/proformas/"))
+    assert.ok(prof.url.includes("/proformas/"))
   })
 
   await t.test("Gestión de precios personalizados por cliente por producto (API)", async () => {

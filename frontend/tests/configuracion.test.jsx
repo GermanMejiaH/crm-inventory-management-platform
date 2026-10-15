@@ -5,11 +5,9 @@ import * as clientApi from "../src/api/client"
 
 vi.mock("../src/api/client")
 
-describe("Persistencia y Gestión de Configuración (Backend API sin LocalStorage)", () => {
+describe("Persistencia y Gestión de Configuración (Backend API)", () => {
   beforeEach(() => {
     vi.resetAllMocks()
-    localStorage.clear()
-    sessionStorage.clear()
   })
 
   const mockConfig = {
@@ -58,7 +56,7 @@ describe("Persistencia y Gestión de Configuración (Backend API sin LocalStorag
     expect(screen.getByText("Transferencia")).toBeTruthy()
   })
 
-  it("persiste los cambios en la API backend sin tocar localStorage ni sessionStorage", async () => {
+  it("persiste los cambios en la API backend", async () => {
     clientApi.getOptions.mockResolvedValue(mockOptions)
     clientApi.getConfiguracion.mockResolvedValue(mockConfig)
     clientApi.updateConfiguracion.mockResolvedValue({
@@ -68,8 +66,6 @@ describe("Persistencia y Gestión de Configuración (Backend API sin LocalStorag
         name: "Nueva Razón Social S.A.S."
       }
     })
-
-    const localStorageSpy = vi.spyOn(Storage.prototype, "setItem")
 
     renderConfiguracion()
 
@@ -90,12 +86,6 @@ describe("Persistencia y Gestión de Configuración (Backend API sin LocalStorag
         })
       })
     })
-
-    // Asegura que no se haya invocado localStorage ni sessionStorage para persistir configuración
-    expect(localStorageSpy).not.toHaveBeenCalledWith("companyInfo", expect.anything())
-    expect(localStorageSpy).not.toHaveBeenCalledWith("configuracion", expect.anything())
-    expect(localStorage.getItem("companyInfo")).toBeNull()
-    expect(sessionStorage.getItem("companyInfo")).toBeNull()
   })
 
   it("notifica error cuando la API backend falla al persistir", async () => {

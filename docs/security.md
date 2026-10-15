@@ -58,6 +58,8 @@ Este documento detalla las directrices, mecanismos y salvaguardas implementadas 
   El analizador de cuerpos HTTP de Express restringe las cargas JSON y formularios a un máximo de `1mb` para prevenir ataques de denegación de servicio (DoS) por agotamiento de memoria.
 - **Política de Origen Cruzado (CORS) Restringida:**  
   No se utiliza el comodín permisivo `*`. La API valida los orígenes entrantes contra una lista blanca explícita definida en `CORS_ORIGIN`, admitiendo únicamente orígenes locales controlados en desarrollo.
+- **Descarga Protegida de Documentos:**  
+  Los comprobantes y proformas en PDF no se exponen mediante directorios estáticos públicos (`/static/proformas`). La descarga se gestiona exclusivamente a través de endpoints autenticados (`/proformas/:id/download`) que validan JWT y roles antes de transferir el flujo binario con cabeceras `Content-Type: application/pdf`.
 - **Manejo Centralizado de Excepciones:**  
   El middleware global de errores captura excepciones no controladas. En producción, responde con un mensaje genérico `"Error interno del servidor"` sin exponer trazas de pila (_stack traces_) ni detalles de la infraestructura.
 

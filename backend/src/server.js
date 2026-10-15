@@ -33,6 +33,7 @@ import {
   deleteOrder,
   addProforma,
   listProformas,
+  getProforma,
   users,
   listStockMovementsDetailed,
   countStockMovements,
@@ -170,7 +171,6 @@ if (!config.isTest) {
     console.log("Proformas dir:", proformaDir)
   } catch {}
 }
-app.use("/static/proformas", express.static(proformaDir))
 
 // Configurar trust proxy únicamente si está habilitado en configuración
 if (config.trustProxy !== false) {
@@ -616,8 +616,13 @@ app.post("/pedidos/:id/proforma", auth, allowRoles("Admin", "Operador"), async (
   buildProformaDocument(doc, { pedido, client, product, ts, companyInfo: getCompanyInfo() })
   doc.end()
   await new Promise((r) => stream.on("finish", r))
-  const url = `/static/proformas/${fileName}`
-  const record = addProforma({ pedidoId: id, clienteId: pedido.clienteId, total: pedido.total, url })
+  const record = addProforma({
+    pedidoId: id,
+    clienteId: pedido.clienteId,
+    total: pedido.total,
+    url: `/proformas/${fileName}`
+  })
+  const url = `/proformas/${record.id}/download`
   if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS && client?.email) {
     try {
       const transporter = nodemailer.createTransport({
@@ -639,7 +644,45 @@ app.post("/pedidos/:id/proforma", auth, allowRoles("Admin", "Operador"), async (
 })
 
 app.get("/proformas", auth, (req, res) => {
-  res.json(listProformas())
+  const proformas = listProformas().map((p) => ({
+    ...p,
+    downloadUrl: `/proformas/${p.id}/download`
+  }))
+  res.json(proformas)
+})
+
+app.get("/proformas/:id/download", auth, allowRoles("Admin", "Operador", "Lector"), (req, res) => {
+  const id = Number(req.params.id)
+  if (!id || isNaN(id)) {
+    return res.status(400).json({ error: "invalid_id" })
+  }
+  const proforma = getProforma(id)
+  if (!proforma) return res.status(404).json({ error: "not_found" })
+  const fileName = path.basename(proforma.url)
+  const filePath = path.resolve(proformaDir, fileName)
+  if (!filePath.startsWith(path.resolve(proformaDir)) || !fs.existsSync(filePath)) {
+    return res.status(404).json({ error: "file_not_found" })
+  }
+  res.setHeader("Content-Type", "application/pdf")
+  res.setHeader("Content-Disposition", `attachment; filename="proforma-pedido-${proforma.pedidoId}.pdf"`)
+  fs.createReadStream(filePath).pipe(res)
+})
+
+app.get("/proformas/:id/pdf", auth, allowRoles("Admin", "Operador", "Lector"), (req, res) => {
+  const id = Number(req.params.id)
+  if (!id || isNaN(id)) {
+    return res.status(400).json({ error: "invalid_id" })
+  }
+  const proforma = getProforma(id)
+  if (!proforma) return res.status(404).json({ error: "not_found" })
+  const fileName = path.basename(proforma.url)
+  const filePath = path.resolve(proformaDir, fileName)
+  if (!filePath.startsWith(path.resolve(proformaDir)) || !fs.existsSync(filePath)) {
+    return res.status(404).json({ error: "file_not_found" })
+  }
+  res.setHeader("Content-Type", "application/pdf")
+  res.setHeader("Content-Disposition", `inline; filename="proforma-pedido-${proforma.pedidoId}.pdf"`)
+  fs.createReadStream(filePath).pipe(res)
 })
 
 app.get("/pedidos/:id/audit", auth, (req, res) => {

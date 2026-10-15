@@ -251,6 +251,7 @@ Para más detalles sobre los umbrales de validación previa a despliegue o contr
 4. **Protección Contra Fuerza Bruta:** El endpoint `/auth/login` implementa un limitador de tasa (_rate limiting_) que bloquea temporalmente peticiones abusivas tras múltiples intentos fallidos desde una misma IP.
 5. **Endurecimiento de Cabeceras HTTP:** Implementación de `helmet` para configurar defensas contra clickjacking (`X-Frame-Options`), inyección MIME (`X-Content-Type-Options`) y políticas de referencia restrictivas.
 6. **Protección de Datos en Consultas:** 100% de las consultas a base de datos utilizan sentencias preparadas parametrizadas para neutralizar cualquier riesgo de inyección SQL.
+7. **Descarga Segura de Documentos:** Se eliminó la exposición pública de PDFs mediante directorios estáticos. La descarga de proformas se realiza a través de endpoints autenticados (`/proformas/:id/download`) que validan JWT y roles antes de suministrar el archivo binario.
 
 Para profundizar en el modelo de amenazas y mitigaciones, consulte [**`docs/security.md`**](docs/security.md).
 

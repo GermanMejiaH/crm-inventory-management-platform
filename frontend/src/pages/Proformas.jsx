@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { FileText, Search, RefreshCw, Download, DollarSign, Clock } from "lucide-react"
 import { useToast } from "../components/ToastContext"
-import { getProformas, API_BASE_URL } from "../api/client"
+import { getProformas, downloadProformaPDF } from "../api/client"
 import MetricCard from "../components/MetricCard"
 import EmptyState from "../components/EmptyState"
 
@@ -10,6 +10,27 @@ export default function Proformas({ token }) {
   const [items, setItems] = useState([])
   const [searchTerm, setSearchTerm] = useState("")
   const [loading, setLoading] = useState(true)
+  const [downloadingId, setDownloadingId] = useState(null)
+
+  async function handleDownload(proformaId, pedidoId) {
+    try {
+      setDownloadingId(proformaId)
+      const blob = await downloadProformaPDF(token, proformaId)
+      const blobUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = blobUrl
+      link.download = `proforma-pedido-${pedidoId}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(blobUrl)
+      addToast("Proforma descargada exitosamente", "success")
+    } catch (err) {
+      addToast(err.message || "Error al descargar la proforma", "error")
+    } finally {
+      setDownloadingId(null)
+    }
+  }
 
   async function load() {
     if (!token) return
@@ -148,16 +169,16 @@ export default function Proformas({ token }) {
                       ${Number(p.total || 0).toLocaleString("es-CO")} COP
                     </td>
                     <td className="p-4 text-right">
-                      <a
-                        href={`${API_BASE_URL}${p.url}`}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => handleDownload(p.id, p.pedidoId)}
+                        disabled={downloadingId === p.id}
                         aria-label={`Descargar proforma en PDF para el pedido #${p.pedidoId}`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg text-xs font-medium transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
                       >
                         <Download className="w-3.5 h-3.5" />
-                        <span>Descargar PDF</span>
-                      </a>
+                        <span>{downloadingId === p.id ? "Descargando..." : "Descargar PDF"}</span>
+                      </button>
                     </td>
                   </tr>
                 ))

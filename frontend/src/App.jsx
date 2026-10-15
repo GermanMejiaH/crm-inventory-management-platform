@@ -62,22 +62,16 @@ const navItems = [
 ]
 
 export default function App({ initialToken = "" }) {
-  const [token, setToken] = useState(() => initialToken || localStorage.getItem("token") || "")
+  const [token, setToken] = useState(() => initialToken || "")
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const location = useLocation()
 
   function handleLogout() {
     setToken("")
-    localStorage.removeItem("token")
   }
 
   function handleSetToken(newToken) {
-    setToken(newToken)
-    if (newToken) {
-      localStorage.setItem("token", newToken)
-    } else {
-      localStorage.removeItem("token")
-    }
+    setToken(newToken || "")
   }
 
   useEffect(() => {

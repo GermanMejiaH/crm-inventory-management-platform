@@ -180,6 +180,10 @@ export function listProformas() {
   return db.prepare("SELECT * FROM proformas").all()
 }
 
+export function getProformaById(id) {
+  return db.prepare("SELECT * FROM proformas WHERE id = ?").get(Number(id))
+}
+
 export function addOrderPaymentRecord(orderId, { monto, metodoPago, nota }, userId) {
   const order = getOrderById(orderId)
   if (!order) throw new Error("Pedido no encontrado")

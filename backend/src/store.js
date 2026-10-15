@@ -79,6 +79,7 @@ export const countOrderAudit = orderService.countOrderAudit
 export const listOrderAuditDetailed = orderService.listOrderAuditDetailed
 export const addProforma = orderService.addProforma
 export const listProformas = orderService.listProformas
+export const getProforma = orderService.getProforma
 
 export const addOrderPayment = paymentService.addOrderPayment
 export const getOrderPayments = paymentService.getOrderPayments
@@ -120,6 +121,5 @@ export const getFlujoCajaSimple = reportService.getFlujoCajaSimple
 export const triggerBackup = runBackup
 
 export const updateUserPasswordByEmail = userRepo.updateUserPasswordByEmail
-export const updateLegacyUserPassword = userRepo.updateLegacyUserPassword
 
 export { payments, orderStates, users }

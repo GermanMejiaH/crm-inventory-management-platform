@@ -325,3 +325,7 @@ export function addProforma(data) {
 export function listProformas() {
   return orderRepo.listProformas()
 }
+
+export function getProforma(id) {
+  return orderRepo.getProformaById(id)
+}
