@@ -10,7 +10,8 @@ vi.mock("../src/api/client", () => ({
   }),
   getClientes: vi.fn().mockResolvedValue([]),
   getProductos: vi.fn().mockResolvedValue([]),
-  getDashboardStats: vi.fn().mockResolvedValue({ kpis: {}, stockCritico: [] })
+  getDashboardStats: vi.fn().mockResolvedValue({ kpis: {}, stockCritico: [] }),
+  getDemoStatus: vi.fn().mockResolvedValue(false)
 }))
 
 describe("Carga diferida (React.lazy + Suspense) y Accesibilidad de Estados de Carga", () => {

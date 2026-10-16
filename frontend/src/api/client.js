@@ -113,6 +113,14 @@ export async function downloadProformaPDF(token, proformaId) {
   return res.blob()
 }
 export const API_BASE_URL = BASE_URL
+export async function getDemoStatus() {
+  try {
+    const res = await request("/demo-status")
+    return res?.demoMode === true
+  } catch {
+    return false
+  }
+}
 export function getOptions(token) {
   return request("/config/options", { token })
 }

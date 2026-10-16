@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs"
 import db from "../src/db.js"
+import config from "../src/config.js"
 import * as clientService from "../src/services/clientService.js"
 import * as productService from "../src/services/productService.js"
 import * as bomService from "../src/services/bomService.js"
@@ -84,11 +85,16 @@ export const DEMO_PRODUCTS = [
 
 export function seedDemoData(options = {}) {
   const nodeEnv = (options.nodeEnv || process.env.NODE_ENV || "").toLowerCase()
-  if (nodeEnv === "production") {
+  const isEphemeral =
+    options.allowEphemeralDemo === true ||
+    (options.isEphemeralDemo !== undefined ? options.isEphemeralDemo : config.isEphemeralDemo)
+
+  if (nodeEnv === "production" && !isEphemeral) {
     throw new Error("PROHIBIDO: No se permite ejecutar el seeder de demostración en entorno de producción.")
   }
 
   const explicitSignal =
+    isEphemeral ||
     options.force === true ||
     String(options.seedDemoEnv || process.env.SEED_DEMO || "").toLowerCase() === "true" ||
     process.argv.includes("--confirm")
@@ -108,24 +114,41 @@ export function seedDemoData(options = {}) {
     bomConfigured: false
   }
 
+  const database = options.db || db
+
   // 1. Usuario demostrativo
-  const existingUser = db.prepare("SELECT id FROM users WHERE email = ?").get("demo.admin@portfolio.invalid")
+  const existingUser = database.prepare("SELECT id FROM users WHERE email = ?").get("demo.admin@portfolio.invalid")
   if (!existingUser) {
     const demoPasswordHash = bcrypt.hashSync("local-demo-only-change-me", 10)
-    db.prepare("INSERT INTO users (email, passwordHash, role, name) VALUES (?,?,?,?)").run(
-      "demo.admin@portfolio.invalid",
-      demoPasswordHash,
-      "Admin",
-      "Administrador Demo"
-    )
+    database
+      .prepare("INSERT INTO users (email, passwordHash, role, name) VALUES (?,?,?,?)")
+      .run("demo.admin@portfolio.invalid", demoPasswordHash, "Admin", "Administrador Demo")
     results.user.created = true
   }
 
   // 2. Clientes demostrativos (idempotente)
   for (const client of DEMO_CLIENTS) {
-    const existing = db.prepare("SELECT id FROM clients WHERE email = ?").get(client.email)
+    const existing = database.prepare("SELECT id FROM clients WHERE email = ?").get(client.email)
     if (!existing) {
-      clientService.addClient(client)
+      if (options.db && options.db !== db) {
+        database
+          .prepare(
+            "INSERT INTO clients (nombre, contacto, telefono, email, direccion, precioPersonalizado, notas, createdAt, active) VALUES (?,?,?,?,?,?,?,?,?)"
+          )
+          .run(
+            client.nombre,
+            client.contacto,
+            client.telefono,
+            client.email,
+            client.direccion,
+            client.precioPersonalizado,
+            client.notas,
+            Date.now(),
+            1
+          )
+      } else {
+        clientService.addClient(client)
+      }
       results.clientsCreated++
     } else {
       results.clientsExisting++
@@ -134,9 +157,29 @@ export function seedDemoData(options = {}) {
 
   // 3. Productos demostrativos (idempotente)
   for (const prod of DEMO_PRODUCTS) {
-    const existing = db.prepare("SELECT id FROM products WHERE nombre = ?").get(prod.nombre)
+    const existing = database.prepare("SELECT id FROM products WHERE nombre = ?").get(prod.nombre)
     if (!existing) {
-      productService.addProduct(prod)
+      if (options.db && options.db !== db) {
+        database
+          .prepare(
+            "INSERT INTO products (nombre, descripcion, precioMinimo, precioMaximo, stockActual, stockMinimo, updatedAt, active, tipo, costoUnitario, unidadMedida) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+          )
+          .run(
+            prod.nombre,
+            prod.descripcion,
+            prod.precioMinimo,
+            prod.precioMaximo,
+            prod.stockActual,
+            prod.stockMinimo,
+            Date.now(),
+            1,
+            prod.tipo || "producto_terminado",
+            prod.costoUnitario || 0,
+            prod.unidadMedida || "unidades"
+          )
+      } else {
+        productService.addProduct(prod)
+      }
       results.productsCreated++
     } else {
       results.productsExisting++
@@ -144,18 +187,35 @@ export function seedDemoData(options = {}) {
   }
 
   // 4. Receta BOM de demostración (idempotente)
-  const ptA = db.prepare("SELECT id FROM products WHERE nombre = ?").get("Producto Demo A")
-  const mpInsumo = db.prepare("SELECT id FROM products WHERE nombre = ?").get("Insumo de Muestra")
-  const mpComp = db.prepare("SELECT id FROM products WHERE nombre = ?").get("Componente Demo X")
+  const ptA = database.prepare("SELECT id FROM products WHERE nombre = ?").get("Producto Demo A")
+  const mpInsumo = database.prepare("SELECT id FROM products WHERE nombre = ?").get("Insumo de Muestra")
+  const mpComp = database.prepare("SELECT id FROM products WHERE nombre = ?").get("Componente Demo X")
 
   if (ptA && mpInsumo && mpComp) {
-    const existingBom = bomService.getBom(ptA.id)
-    if (!existingBom || existingBom.length === 0) {
-      bomService.setBom(ptA.id, [
-        { materiaPrimaId: mpInsumo.id, cantidadRequerida: 2 },
-        { materiaPrimaId: mpComp.id, cantidadRequerida: 1 }
-      ])
-      results.bomConfigured = true
+    if (options.db && options.db !== db) {
+      const existingBom = database.prepare("SELECT id FROM bom_items WHERE productoTerminadoId = ?").all(ptA.id)
+      if (!existingBom || existingBom.length === 0) {
+        database
+          .prepare(
+            "INSERT INTO bom_items (productoTerminadoId, materiaPrimaId, cantidadRequerida, createdAt) VALUES (?,?,?,?)"
+          )
+          .run(ptA.id, mpInsumo.id, 2, Date.now())
+        database
+          .prepare(
+            "INSERT INTO bom_items (productoTerminadoId, materiaPrimaId, cantidadRequerida, createdAt) VALUES (?,?,?,?)"
+          )
+          .run(ptA.id, mpComp.id, 1, Date.now())
+        results.bomConfigured = true
+      }
+    } else {
+      const existingBom = bomService.getBom(ptA.id)
+      if (!existingBom || existingBom.length === 0) {
+        bomService.setBom(ptA.id, [
+          { materiaPrimaId: mpInsumo.id, cantidadRequerida: 2 },
+          { materiaPrimaId: mpComp.id, cantidadRequerida: 1 }
+        ])
+        results.bomConfigured = true
+      }
     }
   }
 

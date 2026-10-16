@@ -22,6 +22,7 @@ vi.mock("../src/api/client", () => ({
   getReorderAlerts: vi.fn().mockResolvedValue([]),
   getAlertasStock: vi.fn().mockResolvedValue({ alertasCount: 0, items: [] }),
   getDashboard: vi.fn().mockResolvedValue({}),
+  getDemoStatus: vi.fn().mockResolvedValue(false),
   login: vi.fn()
 }))
 
@@ -89,5 +90,33 @@ describe("Navegación, Layout y Accesibilidad del Shell", () => {
     fireEvent.click(logoutButtons[0])
 
     expect(await screen.findByRole("button", { name: /Iniciar Sesión/i })).toBeTruthy()
+  })
+
+  it("muestra el mensaje claro de advertencia de demo pública cuando el modo demo está activo", async () => {
+    const { getDemoStatus } = await import("../src/api/client")
+    getDemoStatus.mockResolvedValueOnce(true)
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <App initialToken="dummy-jwt" />
+      </MemoryRouter>
+    )
+
+    const banner = await screen.findByRole("status", { name: /Aviso de demostración pública/i })
+    expect(banner).toBeTruthy()
+    expect(banner.textContent).toContain(
+      "Demo pública: los datos se restablecen periódicamente y no representan información real"
+    )
+  })
+
+  it("no muestra el banner de demo cuando el modo demo no está activo", () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <App initialToken="dummy-jwt" />
+      </MemoryRouter>
+    )
+
+    const banner = screen.queryByRole("status", { name: /Aviso de demostración pública/i })
+    expect(banner).toBeNull()
   })
 })

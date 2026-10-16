@@ -9,6 +9,7 @@ import PDFDocument from "pdfkit"
 import nodemailer from "nodemailer"
 import { buildProformaDocument } from "./proformaPdf.js"
 import { logActivity, logError } from "./utils/logger.js"
+import { autoSeedIfEmpty } from "./services/demoSeedService.js"
 import {
   payments,
   orderStates,
@@ -172,6 +173,20 @@ if (!config.isTest) {
   } catch {}
 }
 
+// En modo efímero verificado, sembrar automáticamente solo si la base de datos temporal está vacía
+if (config.isEphemeralDemo) {
+  try {
+    const seedResult = autoSeedIfEmpty()
+    if (seedResult.executed && !config.isTest) {
+      console.log("Demo efímera: base temporal vacía detectada, sembrado automático ejecutado.")
+    }
+  } catch (err) {
+    if (!config.isTest) {
+      console.error("Aviso: no se pudo auto-sembrar base demo:", err.message)
+    }
+  }
+}
+
 // Configurar trust proxy únicamente si está habilitado en configuración
 if (config.trustProxy !== false) {
   app.set("trust proxy", config.trustProxy)
@@ -282,8 +297,16 @@ app.get("/dashboard", auth, (req, res) => {
   res.json(getDashboardStats())
 })
 
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" })
+})
+
+app.get("/demo-status", (req, res) => {
+  res.json({ demoMode: config.isEphemeralDemo })
+})
+
 app.get("/config/options", auth, (req, res) => {
-  res.json({ payments, orderStates })
+  res.json({ payments, orderStates, demoMode: config.isEphemeralDemo })
 })
 
 app.get("/configuracion", auth, (req, res) => {
@@ -651,38 +674,87 @@ app.get("/proformas", auth, (req, res) => {
   res.json(proformas)
 })
 
-app.get("/proformas/:id/download", auth, allowRoles("Admin", "Operador", "Lector"), (req, res) => {
+async function ensureProformaPdfFile(proforma) {
+  const fileName = path.basename(proforma.url)
+  const filePath = path.resolve(proformaDir, fileName)
+
+  // Validación de seguridad para prevenir path traversal
+  if (!filePath.startsWith(path.resolve(proformaDir))) {
+    return null
+  }
+
+  // Si el archivo físico ya existe en el almacenamiento, retornarlo directamente
+  if (fs.existsSync(filePath)) {
+    return filePath
+  }
+
+  // Si el archivo ya no existe pero el pedido aún existe (caso típico de contenedor efímero),
+  // regenerar el documento de forma segura a partir de los datos existentes.
+  const pedido = getOrder(proforma.pedidoId)
+  if (!pedido) {
+    return null
+  }
+
+  const client = getClient(pedido.clienteId)
+  const product = getProduct(pedido.productoId)
+  const ts = proforma.createdAt || Date.now()
+
+  fs.mkdirSync(proformaDir, { recursive: true })
+  const doc = new PDFDocument({ margin: 40 })
+  const stream = fs.createWriteStream(filePath)
+  doc.pipe(stream)
+  buildProformaDocument(doc, { pedido, client, product, ts, companyInfo: getCompanyInfo() })
+  doc.end()
+  await new Promise((resolve, reject) => {
+    stream.on("finish", resolve)
+    stream.on("error", reject)
+  })
+
+  return filePath
+}
+
+app.get("/proformas/:id/download", auth, allowRoles("Admin", "Operador", "Lector"), async (req, res) => {
   const id = Number(req.params.id)
   if (!id || isNaN(id)) {
     return res.status(400).json({ error: "invalid_id" })
   }
   const proforma = getProforma(id)
   if (!proforma) return res.status(404).json({ error: "not_found" })
-  const fileName = path.basename(proforma.url)
-  const filePath = path.resolve(proformaDir, fileName)
-  if (!filePath.startsWith(path.resolve(proformaDir)) || !fs.existsSync(filePath)) {
-    return res.status(404).json({ error: "file_not_found" })
+
+  try {
+    const filePath = await ensureProformaPdfFile(proforma)
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "file_not_found" })
+    }
+    res.setHeader("Content-Type", "application/pdf")
+    res.setHeader("Content-Disposition", `attachment; filename="proforma-pedido-${proforma.pedidoId}.pdf"`)
+    fs.createReadStream(filePath).pipe(res)
+  } catch (err) {
+    logError("PROFORMA_DOWNLOAD_ERROR", err)
+    return res.status(500).json({ error: "download_failed" })
   }
-  res.setHeader("Content-Type", "application/pdf")
-  res.setHeader("Content-Disposition", `attachment; filename="proforma-pedido-${proforma.pedidoId}.pdf"`)
-  fs.createReadStream(filePath).pipe(res)
 })
 
-app.get("/proformas/:id/pdf", auth, allowRoles("Admin", "Operador", "Lector"), (req, res) => {
+app.get("/proformas/:id/pdf", auth, allowRoles("Admin", "Operador", "Lector"), async (req, res) => {
   const id = Number(req.params.id)
   if (!id || isNaN(id)) {
     return res.status(400).json({ error: "invalid_id" })
   }
   const proforma = getProforma(id)
   if (!proforma) return res.status(404).json({ error: "not_found" })
-  const fileName = path.basename(proforma.url)
-  const filePath = path.resolve(proformaDir, fileName)
-  if (!filePath.startsWith(path.resolve(proformaDir)) || !fs.existsSync(filePath)) {
-    return res.status(404).json({ error: "file_not_found" })
+
+  try {
+    const filePath = await ensureProformaPdfFile(proforma)
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "file_not_found" })
+    }
+    res.setHeader("Content-Type", "application/pdf")
+    res.setHeader("Content-Disposition", `inline; filename="proforma-pedido-${proforma.pedidoId}.pdf"`)
+    fs.createReadStream(filePath).pipe(res)
+  } catch (err) {
+    logError("PROFORMA_VIEW_ERROR", err)
+    return res.status(500).json({ error: "view_failed" })
   }
-  res.setHeader("Content-Type", "application/pdf")
-  res.setHeader("Content-Disposition", `inline; filename="proforma-pedido-${proforma.pedidoId}.pdf"`)
-  fs.createReadStream(filePath).pipe(res)
 })
 
 app.get("/pedidos/:id/audit", auth, (req, res) => {
@@ -1128,7 +1200,7 @@ app.use((err, _req, res, _next) => {
 })
 
 let server = null
-if (config.nodeEnv !== "test") {
+if (config.nodeEnv !== "test" && process.env.NODE_ENV !== "test") {
   server = app.listen(port, () => {
     console.log(`CRM Portfolio backend escuchando en el puerto ${port}`)
   })

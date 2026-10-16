@@ -1,4 +1,5 @@
 import path from "path"
+import os from "os"
 import { fileURLToPath } from "url"
 import crypto from "crypto"
 import dotenv from "dotenv"
@@ -12,28 +13,44 @@ export function resolveConfig(env = process.env) {
   const isProduction = nodeEnv === "production"
   const isTest = nodeEnv === "test"
 
-  const envDbPath = env.DB_PATH && String(env.DB_PATH).trim()
-  const envStorageDir = env.STORAGE_DIR && String(env.STORAGE_DIR).trim()
+  // Modo demostración efímera segura (debe estar explícitamente activado con los 3 flags en "true")
+  const demoMode = env.DEMO_MODE === "true"
+  const demoEphemeral = env.DEMO_EPHEMERAL === "true"
+  const allowDemoAutoSeed = env.ALLOW_DEMO_AUTO_SEED === "true"
+  const isEphemeralDemo = demoMode && demoEphemeral && allowDemoAutoSeed
 
   let dbPath = ""
   let storageRoot = ""
+  let proformaDir = ""
+  let backupDir = ""
 
-  if (envStorageDir) {
-    storageRoot = path.resolve(envStorageDir)
-    dbPath = envDbPath ? path.resolve(envDbPath) : path.join(storageRoot, "data.db")
-  } else if (envDbPath) {
-    dbPath = path.resolve(envDbPath)
-    storageRoot = path.dirname(dbPath)
+  if (isEphemeralDemo) {
+    // En modo efímero, el almacenamiento se aísla obligatoriamente bajo el directorio temporal del SO
+    storageRoot = path.join(os.tmpdir(), "crm-portfolio-ephemeral-demo")
+    dbPath = path.join(storageRoot, "demo-data.db")
+    proformaDir = path.join(storageRoot, "proformas")
+    backupDir = path.join(storageRoot, "backups")
   } else {
-    storageRoot = path.join(__dirname, "..", "storage")
-    dbPath = path.join(storageRoot, "data.db")
+    const envDbPath = env.DB_PATH && String(env.DB_PATH).trim()
+    const envStorageDir = env.STORAGE_DIR && String(env.STORAGE_DIR).trim()
+
+    if (envStorageDir) {
+      storageRoot = path.resolve(envStorageDir)
+      dbPath = envDbPath ? path.resolve(envDbPath) : path.join(storageRoot, "data.db")
+    } else if (envDbPath) {
+      dbPath = path.resolve(envDbPath)
+      storageRoot = path.dirname(dbPath)
+    } else {
+      storageRoot = path.join(__dirname, "..", "storage")
+      dbPath = path.join(storageRoot, "data.db")
+    }
+
+    const envProformaDir = env.PROFORMA_DIR && String(env.PROFORMA_DIR).trim()
+    proformaDir = envProformaDir ? path.resolve(envProformaDir) : path.join(storageRoot, "proformas")
+
+    const envBackupDir = env.BACKUP_DIR && String(env.BACKUP_DIR).trim()
+    backupDir = envBackupDir ? path.resolve(envBackupDir) : path.join(storageRoot, "backups")
   }
-
-  const envProformaDir = env.PROFORMA_DIR && String(env.PROFORMA_DIR).trim()
-  const proformaDir = envProformaDir ? path.resolve(envProformaDir) : path.join(storageRoot, "proformas")
-
-  const envBackupDir = env.BACKUP_DIR && String(env.BACKUP_DIR).trim()
-  const backupDir = envBackupDir ? path.resolve(envBackupDir) : path.join(storageRoot, "backups")
 
   const port = env.PORT || 4000
   const rawJwtSecret = env.JWT_SECRET && String(env.JWT_SECRET).trim()
@@ -57,10 +74,12 @@ export function resolveConfig(env = process.env) {
 
   if (isProduction) {
     const missing = []
-    if (!rawJwtSecret) missing.push("JWT_SECRET")
     if (!corsOrigin) missing.push("CORS_ORIGIN")
-    if (!envDbPath) missing.push("DB_PATH")
-    if (!envStorageDir) missing.push("STORAGE_DIR")
+    if (!isEphemeralDemo) {
+      if (!rawJwtSecret) missing.push("JWT_SECRET")
+      if (!env.DB_PATH || !String(env.DB_PATH).trim()) missing.push("DB_PATH")
+      if (!env.STORAGE_DIR || !String(env.STORAGE_DIR).trim()) missing.push("STORAGE_DIR")
+    }
     if (missing.length > 0) {
       throw new Error(
         `Configuración de producción incompleta. Faltan las variables obligatorias: ${missing.join(", ")}. DB_PATH y STORAGE_DIR deben apuntar a un volumen persistente.`
@@ -68,15 +87,19 @@ export function resolveConfig(env = process.env) {
     }
   }
 
-  // En producción se requiere estrictamente rawJwtSecret (validado arriba).
-  // En desarrollo o pruebas sin JWT_SECRET explícito, se genera un secreto aleatorio efímero en memoria,
+  // En producción normal se requiere estrictamente rawJwtSecret (validado arriba).
+  // En desarrollo, pruebas o modo efímero sin JWT_SECRET explícito, se genera un secreto aleatorio efímero en memoria,
   // eliminando cualquier secreto predecible o estático en código fuente.
-  const jwtSecret = rawJwtSecret || (isProduction ? "" : crypto.randomBytes(32).toString("hex"))
+  const jwtSecret = rawJwtSecret || (isProduction && !isEphemeralDemo ? "" : crypto.randomBytes(32).toString("hex"))
 
   return {
     nodeEnv,
     isProduction,
     isTest,
+    demoMode,
+    demoEphemeral,
+    allowDemoAutoSeed,
+    isEphemeralDemo,
     port: Number(port),
     jwtSecret,
     jwtExpiresIn,
